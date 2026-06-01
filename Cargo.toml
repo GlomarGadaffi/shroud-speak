@@ -1,0 +1,41 @@
+# shroud — workspace root (stub)
+# Start as a single crate; split into the members below once shroud-core stabilizes.
+# Crate names use a placeholder project name — rename when the name decision closes.
+
+[workspace]
+resolver = "2"
+members = [
+    "crates/shroud-core",   # engine: tor + noise + audio + session FSM (no UI)
+    "crates/shroud-proto",  # frame types + (de)serialization, no I/O
+    # "crates/shroud-tui",  # M3
+    # "crates/shroud-daemon",
+]
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+authors = ["Glomar"]
+repository = "https://github.com/GlomarGadaffi/shroud"  # update when repo + name finalized
+
+# Dependency versions intentionally omitted until M0 pins a working arti release.
+# Candidate dependency set (see docs/ARCHITECTURE.md crate mapping):
+[workspace.dependencies]
+# transport / tor
+# arti-client   = { version = "*", features = ["onion-service-service", "onion-service-client"] }
+# tor-rtcompat  = "*"
+# tokio         = { version = "1", features = ["full"] }
+# crypto
+# snow          = "*"          # Noise handshake + transport
+# argon2        = "*"          # secret-at-rest KDF
+# zeroize       = "*"
+# getrandom     = "*"
+# audio
+# cpal          = "*"          # cross-platform capture/playback
+# audiopus      = "*"          # libopus binding
+# fundsp        = "*"          # DSP voice effects (M4)
+# ui / misc
+# crossterm     = "*"
+# ratatui       = "*"          # M3
+# qrcode        = "*"
+# anyhow        = "*"
+# tracing       = "*"
