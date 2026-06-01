@@ -1,14 +1,16 @@
-# shroud
-
-> **Working name — not final.** Placeholder pending a decision (see *Open Decisions* below).
-> Candidates so far: `shroud`, `nightwire`, `cant` (as in *cant* / can't), `deadkey`.
+# shroud-speak
 
 Encrypted push-to-talk voice over Tor onion services, as a single self-contained binary.
 
-`shroud` is a ground-up Rust rewrite of **TerminalPhone** (a Bash orchestrator that
-shelled out to `tor`, `socat`, `openssl`, `opusenc/opusdec`, `sox`, and ALSA tools).
-The rewrite collapses that pipeline into one async process that owns every primitive
-in memory and **never shells out and never writes audio to disk**.
+**shroud** is the platform; **speak** is its first capability — voice. shroud-speak is a
+ground-up Rust rewrite of **TerminalPhone** (a Bash orchestrator that shelled out to `tor`,
+`socat`, `openssl`, `opusenc/opusdec`, `sox`, and ALSA tools). The rewrite collapses that
+pipeline into one async process that owns every primitive in memory and **never shells out
+and never writes audio to disk**.
+
+The substrate (onion transport + Noise + framing) is deliberately medium-agnostic, so other
+capabilities can bolt on later (`shroud-text`, `shroud-drop`, …) over the same spine rather
+than forking it. Voice is just the first payload.
 
 ## What it is
 
@@ -19,7 +21,7 @@ in memory and **never shells out and never writes audio to disk**.
 
 ## Why rewrite it
 
-| Bash / TerminalPhone | shroud |
+| Bash / TerminalPhone | shroud-speak |
 | --- | --- |
 | ~10 external binaries, FIFOs, fd juggling, `socat` | one static binary, in-process |
 | audio chunks hit disk as `.tmp`/`.opus`/`.enc` | RAM-only ring buffers, zeroized keys |
@@ -32,9 +34,24 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full mapping and rati
 
 ## Status
 
-**Pre-alpha / design.** Nothing here runs yet. The first milestone is a de-risking
-spike (M0) that proves the core premise — hosting and self-dialing an onion service
-in-process with no external `tor`. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+**Pre-alpha / design.** Nothing here runs yet. The first milestone is a de-risking spike
+(M0) that proves the core premise — hosting and self-dialing an onion service in-process
+with no external `tor`. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+
+## Layout
+
+```
+shroud-speak/                 (repo)
+  crates/
+    shroud-core/    substrate: arti onion transport + Noise + generic framing (medium-agnostic)
+    shroud-proto/   generic frame envelope, no I/O — unit-testable in isolation
+    shroud-speak/   the voice app: audio pipeline + voice frame types + front-end
+  docs/
+```
+
+`shroud-core` is a library from day one, so the voice app — and anything bolted on later —
+is a thin shell over the same engine. If a second capability ever appears, core/proto can be
+promoted to their own repo or published as crates with no rework.
 
 ## Platforms (target)
 
@@ -43,27 +60,25 @@ Audio capture/playback abstracted via `cpal` (ALSA / CoreAudio / WASAPI / Oboe).
 
 ## Threat model
 
-This is a security tool; read [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) before
-trusting it with anything. Short version: it targets network-adversary confidentiality
-and metadata resistance, **not** endpoint compromise. A rooted phone or a keylogger
-defeats it, as it defeats everything.
+This is a security tool; read [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) before trusting
+it with anything. Short version: it targets network-adversary confidentiality and metadata
+resistance, **not** endpoint compromise. A rooted phone or a keylogger defeats it.
 
 ## Open Decisions
 
-These are deliberately unresolved and tracked here until closed:
+Resolved:
+- [x] **Name** — `shroud-speak` (platform `shroud` + capability `speak`).
+- [x] **`shroud-core` as a library from day one** — yes; everything else bolts onto it.
 
-- [ ] **Name.** (see top)
-- [ ] **UI / process model:** TUI monolith vs. headless daemon + thin clients.
-      Leaning daemon — it lets hardware (pocket-dial, gatekeeper-class devices) be
-      first-class clients of the same engine. See ARCHITECTURE §UI.
-- [ ] **Tor layer:** [arti] (recommended) vs. linking C-tor. Gated on confirming
-      arti's onion-service vanguards / DoS hardening is compiled in and on.
-- [ ] **Repo visibility:** start private through M0–M2, flip public at a tagged
-      milestone? Or public from day one (consistent with prior projects)?
-- [ ] **License:** inheriting MIT from TerminalPhone unless we want copyleft.
+Still open:
+- [ ] **Tor layer:** [arti] (recommended) vs. linking C-tor. Gated on confirming arti's
+      onion-service vanguards / DoS hardening is compiled in and on (verified at M0).
+- [ ] **Front-end shape:** TUI binary inside `shroud-speak` (M3 default) vs. headless daemon
+      + thin clients (lets hardware be a first-class client; deferred, M5).
+- [ ] **Repo visibility:** private through M0–M2, flip public at `v0.1.0`? Or public now?
 
 ## License
 
-MIT (placeholder — see [`LICENSE`](LICENSE)). Inherited from TerminalPhone.
+MIT — see [`LICENSE`](LICENSE). Inherited from TerminalPhone.
 
 [arti]: https://gitlab.torproject.org/tpo/core/arti
