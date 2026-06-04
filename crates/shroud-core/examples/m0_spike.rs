@@ -22,10 +22,14 @@ async fn main() -> anyhow::Result<()> {
     let tor_client = TorClient::create_bootstrapped(config).await?;
     println!("Tor client bootstrapped successfully!");
 
-    // 4. Verify Vanguards / DoS hardening state
-    println!("Verifying Vanguards and DoS hardening status...");
-    let runtime_config = tor_client.config();
-    println!("Configured Vanguards State: {:?}", runtime_config.vanguards());
+    // 4. Vanguards / DoS hardening.
+    // The `vanguards` feature is compiled in (see Cargo.toml) and full vanguards are
+    // on by default for onion-service circuits in arti 0.23.
+    // NOTE (review S9/C8): arti 0.23 exposes no public accessor to *assert* the active
+    // vanguard state at runtime — `TorClient::config()` does not exist, and
+    // `vanguard_config()` is a trait-internal method. A real M0 exit criterion should
+    // confirm active vanguard layers from circuit-construction logs, not a config print.
+    println!("Vanguards feature compiled in; full vanguards default-on for HS circuits.");
 
     // 5. Configure the onion service (nickname speak_spike, no hyphens)
     let svc_cfg = OnionServiceConfigBuilder::default()
@@ -61,11 +65,22 @@ async fn main() -> anyhow::Result<()> {
                             Ok(n) => {
                                 let received = String::from_utf8_lossy(&buf[..n]);
                                 println!("Service Received: {}", received);
-                                
+
                                 // Echo back the message
                                 let response = format!("Echo: {}", received);
                                 if let Err(e) = data_stream.write_all(response.as_bytes()).await {
                                     eprintln!("Failed to write echo back: {:?}", e);
+                                }
+                                // CRITICAL (real bug fix): flush so the echo goes out as a
+                                // Data cell *before* the stream is dropped. Tor has no
+                                // half-close, and dropping a stream sends an END with the
+                                // default reason MISC (see tor-proto CloseStreamBehavior),
+                                // so any unflushed bytes are lost. We deliberately do NOT
+                                // call shutdown(): an explicit close still sends MISC and
+                                // a Tor END tears down both directions — the client only
+                                // needs the data cell, which arrives ahead of the END.
+                                if let Err(e) = data_stream.flush().await {
+                                    eprintln!("Failed to flush echo: {:?}", e);
                                 }
                             }
                             Err(e) => eprintln!("Failed to read from stream: {:?}", e),
@@ -106,6 +121,10 @@ async fn main() -> anyhow::Result<()> {
     client_stream.write_all(msg.as_bytes()).await?;
     client_stream.flush().await?;
 
+    // Do NOT read to EOF: Tor has no half-close, and the service drops its stream after
+    // echoing, which sends an END/MISC that read_to_end would surface as an error. The
+    // echo arrives as a single Data cell ahead of that END, so one read captures it. A
+    // real protocol (see shroud-proto) is length-framed and handles the MISC end itself.
     let mut resp_buf = [0u8; 1024];
     let n = client_stream.read(&mut resp_buf).await?;
     println!("Client Received Response: {}", String::from_utf8_lossy(&resp_buf[..n]));
