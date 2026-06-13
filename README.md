@@ -97,3 +97,48 @@ MIT — see [`LICENSE`](LICENSE). Inherited from TerminalPhone.
 
 [arti]: https://gitlab.torproject.org/tpo/core/arti
 [arti#1186]: https://gitlab.torproject.org/tpo/core/arti/-/issues/1186
+
+---
+
+## Store-and-Forward (Codec2) option
+
+A low-bandwidth, store-and-forward (S&F) fallback using Codec2 is a practical alternative to
+real-time Opus streaming over Tor. It fits the project's goals when reachability, low
+bandwidth, or high latency make a direct call infeasible. The substrate (shroud-core +
+shroud-proto) is medium-agnostic and supports adding S&F as another capability or mode.
+
+Why consider Codec2 + S&F:
+- Extremely low bitrate (hundreds to a few kbps depending on mode) — good for mobile/poor
+  links over Tor.
+- Removes stringent real-time constraints: capture → encode → encrypt → upload; recipient
+  fetches and decodes later.
+- Relay-based queuing improves availability when one or both endpoints are offline.
+
+Trade-offs:
+- Requires storing ciphertext at relays (or locally) — this violates the "never write audio
+  to disk" promise unless the store is strictly ciphertext-only and encrypted with keys
+  unavailable to relays.
+- Codec2 is lower quality than Opus; intelligible voice at low bitrates but not high fidelity.
+- Additional components: relay service, polling/delivery semantics, storage, garbage
+  collection, and replication for availability.
+
+Security notes:
+- Relays should store only ciphertext. Use hybrid-encryption (per-message symmetric key
+  wrapped to recipient) or per-recipient PSKs to ensure relay cannot decrypt.
+- Add AEAD, sequence numbers, timestamps, and MACs to prevent tampering and replay.
+- Mitigate metadata leakage via fixed-size blocks / padding classes, randomized polling,
+  batching, and optional cover traffic.
+
+Implementation sketch:
+- Add frame types to `shroud-proto` for STORE_REQUEST, STORE_ACK, FETCH_REQUEST,
+  FETCH_RESPONSE (encrypted blobs + headers).
+- Create a minimal `shroud-relay` binary (onion service) that accepts STORE/FETCH frames and
+  keeps ciphertext indexed by recipient + msg_id; start with an in-memory queue and optional
+  encrypted-on-disk persistence for availability.
+- Add a Codec2 crate (FFI to libcodec2) or reuse an existing binding; provide a build.rs to
+  compile libcodec2 for static builds.
+- Client flow: capture → encode (Codec2) → chunk → encrypt → STORE to relay(s). Recipient
+  periodically FETCHes, decrypts, reassembles, and plays.
+
+See `ARCHITECTURE.md` and `ROADMAP.md` for detailed notes and a proposed checklist for
+implementation.
