@@ -28,7 +28,7 @@ Nothing in the audio path touches the filesystem.
 
 | Primitive (TerminalPhone) | Crate | Notes |
 | --- | --- | --- |
-| `tor` daemon, torrc, hostname file | `arti-client` | `TorClient::launch_onion_service`; key in the arti keystore. *No true in-memory ephemeral key in arti 0.23 ([arti#1186](https://gitlab.torproject.org/tpo/core/arti/-/issues/1186)); M0 approximates it with a temp-dir state store wiped on exit.* |
+| `tor` daemon, torrc, hostname file | `arti-client` | `TorClient::launch_onion_service`; key in the arti keystore. *No true in-memory ephemeral key in arti 0.23 ([arti#1186](https://gitlab.torpro[...]
 | `socat` SOCKS4A / TCP-LISTEN, `mkfifo` | `arti-client` streams | `DataStream` read/write halves; no SOCKS hop |
 | `openssl enc` (AES-CBC) + `openssl dgst` (HMAC) | `snow` (Noise) | AEAD transport; replaces encrypt-then-MAC entirely |
 | `openssl ... -pbkdf2` (secret at rest) | `argon2` | memory-hard KDF; PBKDF2 was the weak link |
@@ -118,3 +118,45 @@ shroud-speak/
 
 (Single-crate to start is fine; split when `core` stabilizes. The workspace stub in the
 root `Cargo.toml` reflects this target.)
+
+---
+
+## Store-and-Forward (Codec2) option
+
+A low-bandwidth, store-and-forward (S&F) fallback using Codec2 is a practical alternative to
+real-time Opus streaming over Tor. It fits the project's goals when reachability, low
+bandwidth, or high latency make a direct call infeasible. The substrate (shroud-core +
+shroud-proto) is medium-agnostic and supports adding S&F as another capability or mode.
+
+Why consider Codec2 + S&F:
+- Extremely low bitrate (hundreds to a few kbps depending on mode) — good for mobile/poor
+  links over Tor.
+- Removes stringent real-time constraints: capture → encode → encrypt → upload; recipient
+  fetches and decodes later.
+- Relay-based queuing improves availability when one or both endpoints are offline.
+
+Trade-offs:
+- Requires storing ciphertext at relays (or locally) — this violates the "never write audio
+  to disk" promise unless the store is strictly ciphertext-only and encrypted with keys
+  unavailable to relays.
+- Codec2 is lower quality than Opus; intelligible voice at low bitrates but not high fidelity.
+- Additional components: relay service, polling/delivery semantics, storage, garbage
+  collection, and replication for availability.
+
+Security notes:
+- Relays should store only ciphertext. Use hybrid-encryption (per-message symmetric key
+  wrapped to recipient) or per-recipient PSKs to ensure relay cannot decrypt.
+- Add AEAD, sequence numbers, timestamps, and MACs to prevent tampering and replay.
+- Mitigate metadata leakage via fixed-size blocks / padding classes, randomized polling,
+  batching, and optional cover traffic.
+
+Implementation sketch:
+- Add frame types to `shroud-proto` for STORE_REQUEST, STORE_ACK, FETCH_REQUEST,
+  FETCH_RESPONSE (encrypted blobs + headers).
+- Create a minimal `shroud-relay` binary (onion service) that accepts STORE/FETCH frames and
+  keeps ciphertext indexed by recipient + msg_id; start with an in-memory queue and optional
+  encrypted-on-disk persistence for availability.
+- Add a Codec2 crate (FFI to libcodec2) or reuse an existing binding; provide a build.rs to
+  compile libcodec2 for static builds.
+- Client flow: capture → encode (Codec2) → chunk → encrypt → STORE to relay(s). Recipient
+  periodically FETCHes, decrypts, reassembles, and plays.
