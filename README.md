@@ -1,5 +1,7 @@
 # shroud-speak
 
+> **Development paused.** Evaluating [Reticulum/microReticulum](https://github.com/EC-SH/drawbridge/issues/113) as a transport substrate before continuing. See [#25](https://github.com/GlomarGadaffi/shroud-speak/issues/25) for context.
+
 Encrypted push-to-talk voice over Tor onion services, as a single self-contained binary.
 
 **shroud** is the platform; **speak** is its first capability — voice. shroud-speak is a
@@ -34,12 +36,20 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the full mapping and rationale.
 
 ## Status
 
-**Pre-alpha. M0 complete — transport only; no audio (M1) or crypto (M2) yet.**
-Released as [`v0.0.1-alpha`](https://github.com/GlomarGadaffi/shroud-speak/releases/tag/v0.0.1-alpha)
-(prerelease, M0 milestone). The core premise is proven on the **live Tor network**: a
-`TorClient` bootstraps, hosts an onion service in-process, self-dials its own `.onion`, and
-round-trips bytes both directions with **zero external `tor` process** — verified with an
-ephemeral onion plus sustained traffic and a reconnect. Run it yourself:
+**Development paused — transport architecture under review.**
+
+Active implementation is on hold while we evaluate [Reticulum/microReticulum as a transport substrate](https://github.com/EC-SH/drawbridge/issues/113) in a sister project. The decision will determine whether `shroud-core` stays Tor/arti + Noise, or adopts RNS addressing and LXMF async drop as a lower layer. See [#25](https://github.com/GlomarGadaffi/shroud-speak/issues/25).
+
+### Progress so far
+
+| Component | State |
+|---|---|
+| `shroud-proto` — binary frame codec | **Complete.** Length-prefixed envelope, encode/decode, 11 unit tests. |
+| `shroud-core` — Noise secure transport | **Complete.** NNpsk0 + AEAD + Argon2id PSK + replay protection, 9 unit tests. |
+| Arti in-process Tor onion service | **Proven on live Tor.** Bootstrap → host onion → self-dial → sustained traffic → reconnect, zero external `tor` process. |
+| Audio (M1), session FSM (M3), UI | Not started. |
+
+The core premise is proven: a `TorClient` bootstraps in-process, hosts a v3 onion service, and sustains encrypted traffic with no external `tor` daemon.
 
 ```bash
 cargo run -p shroud-core --example m0_spike      # SHROUD_M0_SECS tunes the sustained phase
